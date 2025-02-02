@@ -1,6 +1,7 @@
 use clap::Parser;
 use std::io::{stderr, Read, Result, Write};
 use std::net::TcpStream;
+use std::process;
 
 #[derive(Parser, Debug)]
 struct Args {
@@ -24,7 +25,7 @@ fn main() -> Result<()> {
         }
         Err(e) => {
             eprintln!("EVT.ERROR_LOG Failed to connect: {}", e);
-            std::process::exit(1);
+            process::exit(1);
         }
     };
 
@@ -32,7 +33,7 @@ fn main() -> Result<()> {
     let mut version_buffer = [0; 12];
     if let Err(e) = stream.read_exact(&mut version_buffer) {
         eprintln!("EVT.ERROR_LOG Failed to read server version: {}", e);
-        std::process::exit(1);
+        process::exit(1);
     }
     let server_version = String::from_utf8_lossy(&version_buffer);
     eprintln!("EVT.LOG Server version: {}", server_version.trim());
@@ -41,7 +42,7 @@ fn main() -> Result<()> {
     let client_version = b"RFB 003.008\n";
     if let Err(e) = stream.write_all(client_version) {
         eprintln!("EVT.ERROR_LOG Failed to send client version: {}", e);
-        std::process::exit(1);
+        process::exit(1);
     }
     eprintln!("EVT.LOG Sent client version: RFB 003.008");
 
@@ -49,13 +50,13 @@ fn main() -> Result<()> {
     let mut number_of_security_types = [0; 1];
     if let Err(e) = stream.read_exact(&mut number_of_security_types) {
         eprintln!("EVT.ERROR_LOG Failed to read security types count: {}", e);
-        std::process::exit(1);
+        process::exit(1);
     }
     let number_of_security_types = number_of_security_types[0];
     let mut security_types = vec![0; number_of_security_types as usize];
     if let Err(e) = stream.read_exact(&mut security_types) {
         eprintln!("EVT.ERROR_LOG Failed to read security types: {}", e);
-        std::process::exit(1);
+        process::exit(1);
     }
 
     eprintln!(
@@ -69,7 +70,7 @@ fn main() -> Result<()> {
         let selected_security_type = 1;
         if let Err(e) = stream.write_all(&[selected_security_type]) {
             eprintln!("EVT.ERROR_LOG Failed to send security type: {}", e);
-            std::process::exit(1);
+            process::exit(1);
         }
         eprintln!(
             "EVT.LOG Sent selected security type: {}",
@@ -77,18 +78,18 @@ fn main() -> Result<()> {
         );
     } else {
         eprintln!("EVT.ERROR_LOG Error: Security type 1 is not available.");
-        std::process::exit(1);
+        process::exit(1);
     }
 
     // Security result handling
     let mut security_result = [0; 4];
     if let Err(e) = stream.read_exact(&mut security_result) {
         eprintln!("EVT.ERROR_LOG Failed to read security result: {}", e);
-        std::process::exit(1);
+        process::exit(1);
     }
     if let Err(e) = check_security_result(&mut stream, &security_result) {
         eprintln!("EVT.ERROR_LOG {}", e);
-        std::process::exit(1);
+        process::exit(1);
     }
 
     eprintln!("EVT.LOG Security authentication succeeded");
@@ -97,7 +98,7 @@ fn main() -> Result<()> {
     let shared_flag: u8 = 1;
     if let Err(e) = stream.write_all(&[shared_flag]) {
         eprintln!("EVT.ERROR_LOG Failed to send shared flag: {}", e);
-        std::process::exit(1);
+        process::exit(1);
     }
     eprintln!("EVT.LOG Sent shared-flag: {}", shared_flag);
 
@@ -106,11 +107,11 @@ fn main() -> Result<()> {
     let mut framebuffer_height = [0; 2];
     if let Err(e) = stream.read_exact(&mut framebuffer_width) {
         eprintln!("EVT.ERROR_LOG Failed to read framebuffer width: {}", e);
-        std::process::exit(1);
+        process::exit(1);
     }
     if let Err(e) = stream.read_exact(&mut framebuffer_height) {
         eprintln!("EVT.ERROR_LOG Failed to read framebuffer height: {}", e);
-        std::process::exit(1);
+        process::exit(1);
     }
     let framebuffer_width = u16::from_be_bytes(framebuffer_width);
     let framebuffer_height = u16::from_be_bytes(framebuffer_height);
@@ -122,20 +123,20 @@ fn main() -> Result<()> {
     let mut pixel_format = [0; 16];
     if let Err(e) = stream.read_exact(&mut pixel_format) {
         eprintln!("EVT.ERROR_LOG Failed to read pixel format: {}", e);
-        std::process::exit(1);
+        process::exit(1);
     }
     eprintln!("EVT.LOG Received pixel format: {:?}", pixel_format);
 
     let mut name_length_bytes = [0; 4];
     if let Err(e) = stream.read_exact(&mut name_length_bytes) {
         eprintln!("EVT.ERROR_LOG Failed to read desktop name length: {}", e);
-        std::process::exit(1);
+        process::exit(1);
     }
     let name_length = u32::from_be_bytes(name_length_bytes);
     let mut name_string = vec![0; name_length as usize];
     if let Err(e) = stream.read_exact(&mut name_string) {
         eprintln!("EVT.ERROR_LOG Failed to read desktop name: {}", e);
-        std::process::exit(1);
+        process::exit(1);
     }
     let name_string = String::from_utf8_lossy(&name_string);
     eprintln!("EVT.LOG Received desktop name: {}", name_string);
@@ -143,19 +144,19 @@ fn main() -> Result<()> {
     // Send SetEncodings message with QEMU Audio encoding
     if let Err(e) = send_set_encodings_qemu_audio(&mut stream) {
         eprintln!("EVT.ERROR_LOG Failed to send encodings: {}", e);
-        std::process::exit(1);
+        process::exit(1);
     }
 
     // Set audio sample format and enable audio capture
     if let Err(e) = set_audio_sample_format(&mut stream, 3, 2, 48000) {
         eprintln!("EVT.ERROR_LOG Failed to set audio format: {}", e);
-        std::process::exit(1);
+        process::exit(1);
     }
 
     // Enable audio capture
     if let Err(e) = enable_audio_capture(&mut stream) {
         eprintln!("EVT.ERROR_LOG Failed to enable audio capture: {}", e);
-        std::process::exit(1);
+        process::exit(1);
     }
 
     // Handle server messages
@@ -163,25 +164,25 @@ fn main() -> Result<()> {
         let mut message_type = [0; 1];
         if let Err(e) = stream.read_exact(&mut message_type) {
             eprintln!("EVT.ERROR_LOG Failed to read message type: {}", e);
-            std::process::exit(1);
+            process::exit(1);
         }
 
         match message_type[0] {
             0 => {
                 if let Err(e) = handle_framebuffer_update(&mut stream) {
                     eprintln!("EVT.ERROR_LOG Error handling framebuffer update: {}", e);
-                    std::process::exit(1);
+                    process::exit(1);
                 }
             }
             255 => {
                 if let Err(e) = handle_qemu_audio_message(&mut stream) {
                     eprintln!("EVT.ERROR_LOG Error handling audio message: {}", e);
-                    std::process::exit(1);
+                    process::exit(1);
                 }
             }
             _ => {
                 eprintln!("EVT.ERROR_LOG Unknown message type: {}", message_type[0]);
-                std::process::exit(1);
+                process::exit(1);
             }
         }
     }
