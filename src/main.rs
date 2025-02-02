@@ -29,6 +29,16 @@ fn main() -> Result<()> {
         }
     };
 
+    if let Err(e) = handle_server_communication(&mut stream) {
+        eprintln!("EVT.ERROR_LOG Error during communication: {}", e);
+        process::exit(1);
+    }
+
+    eprintln!("EVT.CONN_CLOSED Connection closed.");
+    process::exit(0);
+}
+
+fn handle_server_communication(stream: &mut TcpStream) -> Result<()> {
     // Server's protocol version
     let mut version_buffer = [0; 12];
     if let Err(e) = stream.read_exact(&mut version_buffer) {
@@ -87,7 +97,9 @@ fn main() -> Result<()> {
         eprintln!("EVT.ERROR_LOG Failed to read security result: {}", e);
         process::exit(1);
     }
-    if let Err(e) = check_security_result(&mut stream, &security_result) {
+
+    // Check security result
+    if let Err(e) = check_security_result(stream, &security_result) {
         eprintln!("EVT.ERROR_LOG {}", e);
         process::exit(1);
     }
@@ -142,19 +154,19 @@ fn main() -> Result<()> {
     eprintln!("EVT.LOG Received desktop name: {}", name_string);
 
     // Send SetEncodings message with QEMU Audio encoding
-    if let Err(e) = send_set_encodings_qemu_audio(&mut stream) {
+    if let Err(e) = send_set_encodings_qemu_audio(stream) {
         eprintln!("EVT.ERROR_LOG Failed to send encodings: {}", e);
         process::exit(1);
     }
 
-    // Set audio sample format and enable audio capture
-    if let Err(e) = set_audio_sample_format(&mut stream, 3, 2, 48000) {
+    // Set audio sample format
+    if let Err(e) = set_audio_sample_format(stream, 3, 2, 48000) {
         eprintln!("EVT.ERROR_LOG Failed to set audio format: {}", e);
         process::exit(1);
     }
 
     // Enable audio capture
-    if let Err(e) = enable_audio_capture(&mut stream) {
+    if let Err(e) = enable_audio_capture(stream) {
         eprintln!("EVT.ERROR_LOG Failed to enable audio capture: {}", e);
         process::exit(1);
     }
@@ -162,33 +174,41 @@ fn main() -> Result<()> {
     // Handle server messages
     loop {
         let mut message_type = [0; 1];
-        if let Err(e) = stream.read_exact(&mut message_type) {
-            eprintln!("EVT.ERROR_LOG Failed to read message type: {}", e);
-            process::exit(1);
-        }
-
-        match message_type[0] {
-            0 => {
-                if let Err(e) = handle_framebuffer_update(&mut stream) {
-                    eprintln!("EVT.ERROR_LOG Error handling framebuffer update: {}", e);
-                    process::exit(1);
+        match stream.read_exact(&mut message_type) {
+            Ok(_) => match message_type[0] {
+                0 => {
+                    if let Err(e) = handle_framebuffer_update(stream) {
+                        eprintln!("EVT.ERROR_LOG Error handling framebuffer update: {}", e);
+                        return Err(e);
+                    }
                 }
-            }
-            255 => {
-                if let Err(e) = handle_qemu_audio_message(&mut stream) {
-                    eprintln!("EVT.ERROR_LOG Error handling audio message: {}", e);
-                    process::exit(1);
+                255 => {
+                    if let Err(e) = handle_qemu_audio_message(stream) {
+                        eprintln!("EVT.ERROR_LOG Error handling audio message: {}", e);
+                        return Err(e);
+                    }
                 }
-            }
-            _ => {
-                eprintln!("EVT.ERROR_LOG Unknown message type: {}", message_type[0]);
-                process::exit(1);
+                _ => {
+                    eprintln!("EVT.ERROR_LOG Unknown message type: {}", message_type[0]);
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::InvalidData,
+                        "Unknown message type",
+                    ));
+                }
+            },
+            Err(e) => {
+                if e.kind() == std::io::ErrorKind::UnexpectedEof {
+                    eprintln!("EVT.LOG Server closed the connection.");
+                    return Ok(());
+                } else {
+                    eprintln!("EVT.ERROR_LOG Failed to read message type: {}", e);
+                    return Err(e);
+                }
             }
         }
     }
 }
 
-// Add new handler functions for standard VNC messages
 fn handle_framebuffer_update(stream: &mut TcpStream) -> Result<()> {
     let mut padding = [0; 1];
     stream.read_exact(&mut padding)?;
@@ -306,47 +326,47 @@ fn enable_audio_capture(stream: &mut TcpStream) -> Result<()> {
 
     let mut buffer = Vec::new();
 
-    // Construct message
-    buffer.push(message_type); // Message type
-    buffer.push(submessage_type); // Submessage type
-    buffer.extend_from_slice(&operation.to_be_bytes()); // Operation (0)
+    // Construct message for audio capture enablement
+    buffer.push(message_type);
+    buffer.push(submessage_type);
+    buffer.extend_from_slice(&operation.to_be_bytes());
 
-    // Send the message
+    // Send the message to enable audio capture
     stream.write_all(&buffer)?;
-    eprintln!("EVT.LOG Sent QEMU Audio Client Message with operation 0 (Enable Audio Capture)");
 
+    eprintln!("EVT.LOG Sent enable audio capture request.");
     Ok(())
 }
 
 // Set the audio sample format
 fn set_audio_sample_format(
     stream: &mut TcpStream,
-    sample_format: u8,
-    nchannels: u8,
-    frequency: u32,
+    format: u8,
+    channels: u8,
+    rate: u32,
 ) -> Result<()> {
     // QEMU Audio Client Message: Set Audio Sample Format
     let message_type: u8 = 255; // Message type for QEMU Audio Client Message
     let submessage_type: u8 = 1; // Submessage type for Audio Control
-    let operation: u16 = 2; // Operation 2 to set audio sample format
+    let operation: u16 = 2; // Operation 2 for setting sample format
 
     let mut buffer = Vec::new();
 
-    // Construct message
-    buffer.push(message_type); // Message type
-    buffer.push(submessage_type); // Submessage type
-    buffer.extend_from_slice(&operation.to_be_bytes()); // Operation (2)
-    buffer.push(sample_format); // Sample format (e.g., 2 bytes per sample)
-    buffer.push(nchannels); // Number of channels (1 for mono, 2 for stereo)
-    buffer.extend_from_slice(&frequency.to_be_bytes()); // Frequency (e.g., 48000 Hz)
+    // Construct the message for setting audio sample format
+    buffer.push(message_type);
+    buffer.push(submessage_type);
+    buffer.extend_from_slice(&operation.to_be_bytes());
+    buffer.push(format);
+    buffer.push(channels);
+    buffer.extend_from_slice(&(rate).to_be_bytes());
 
-    // Send the message
+    // Send the message to set the audio sample format
     stream.write_all(&buffer)?;
+
     eprintln!(
         "EVT.LOG Sent QEMU Audio Client Message with operation 2 (Set Audio Sample Format): \
         Sample Format: {}, Channels: {}, Frequency: {}",
-        sample_format, nchannels, frequency
+        format, channels, rate
     );
-
     Ok(())
 }

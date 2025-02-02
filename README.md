@@ -60,6 +60,7 @@ Logs events and errors:
 
 - `EVT.CONNECTING`: Attempting to connect to the server.
 - `EVT.CONNECTED`: Successfully connected to the server.
+- `EVT.CONN_CLOSED`: Connection closed
 - `EVT.LOG <message>`: General information (e.g., version, security type).
 - `EVT.ERROR_LOG <message>`: Error messages (e.g., connection issues, authentication failures).
 - `EVT.AUDIOSTART`: The audio stream has started.
