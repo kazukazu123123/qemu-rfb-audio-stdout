@@ -10,7 +10,7 @@ struct Args {
     port: String,
 }
 
-fn main() -> std::io::Result<()> {
+fn main() -> Result<()> {
     let args = Args::parse();
     let server_address = format!("{}:{}", args.address, args.port);
 
@@ -240,7 +240,7 @@ fn handle_qemu_audio_message(stream: &mut TcpStream) -> Result<()> {
 }
 
 // Security result check
-fn check_security_result(stream: &mut TcpStream, result: &[u8; 4]) -> std::io::Result<()> {
+fn check_security_result(stream: &mut TcpStream, result: &[u8; 4]) -> Result<()> {
     if result != &[0, 0, 0, 0] {
         // Authentication failed, get failure reason
         let reason = handle_security_failure(stream)?;
@@ -257,7 +257,7 @@ fn check_security_result(stream: &mut TcpStream, result: &[u8; 4]) -> std::io::R
 }
 
 // Handle security failure and get the reason
-fn handle_security_failure(stream: &mut TcpStream) -> std::io::Result<String> {
+fn handle_security_failure(stream: &mut TcpStream) -> Result<String> {
     let mut reason_length = [0; 4];
     stream.read_exact(&mut reason_length)?;
     let reason_length = u32::from_be_bytes(reason_length);
