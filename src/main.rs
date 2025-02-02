@@ -17,14 +17,16 @@ fn main() -> std::io::Result<()> {
     eprintln!("EVT.CONNECTING");
     eprintln!("EVT.LOG Connecting to {}", server_address);
     let mut stream = match TcpStream::connect(&server_address) {
-        Ok(stream) => stream,
+        Ok(stream) => {
+            eprintln!("EVT.CONNECTED");
+            eprintln!("EVT.LOG Connected to {}", server_address);
+            stream
+        }
         Err(e) => {
             eprintln!("EVT.ERROR_LOG Failed to connect: {}", e);
             std::process::exit(1);
         }
     };
-    eprintln!("EVT.CONNECTED");
-    eprintln!("EVT.LOG Connected to {}", server_address);
 
     // Server's protocol version
     let mut version_buffer = [0; 12];
